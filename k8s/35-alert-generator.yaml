@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-generator
+  namespace: rtct
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alert-generator
+  template:
+    metadata:
+      labels:
+        app: alert-generator
+    spec:
+      containers:
+        - name: alert-generator
+          image: alert-generator:local
+          imagePullPolicy: Never
+          env:
+            - name: API_URL
+              value: "http://api.rtct.svc.cluster.local:4000/internal/alert"
+            - name: INTERNAL_ALERT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rtct-secrets
+                  key: INTERNAL_ALERT_TOKEN
+            - name: INTERVAL
+              value: "10000" # 10 seconds

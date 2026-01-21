@@ -1,0 +1,46 @@
+# ---- Web Ingress (no rewrite) ----
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rtct-web-ingress
+  namespace: rtct
+  annotations:
+    kubernetes.io/ingress.class: nginx
+spec:
+  rules:
+    - host: rtct.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 8080
+---
+# ---- API Ingress (regex + rewrite) ----
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rtct-api-ingress
+  namespace: rtct
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  rules:
+    - host: rtct.local
+      http:
+        paths:
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: api
+                port:
+                  number: 4000

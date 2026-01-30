@@ -12,7 +12,8 @@ const config = require("./src/routes/config");
 const authRoutes = require("./src/routes/auth");
 const usersRoutes = require("./src/routes/users");
 const requireAuth = require("./src/middleware/auth");
-const { createAlert } = require("./src/db/alerts.js");
+// const { createAlert } = require("./src/db/alerts.js");
+
 // K8s client (for pods view)
 const k8s = require("@kubernetes/client-node");
 
@@ -31,6 +32,10 @@ migrate()
     process.exit(1);
   });
 
+const internalRepo =
+  process.env.REPO === "sql"
+    ? require("./src/repos/alerts-sql")
+    : require("./src/repos/alerts-memory");
 // ---- Security / Core middleware ----
 // CORS removed — traffic is same-origin via Ingress (/api → rtct-api)
 app.use(helmet());
@@ -83,6 +88,8 @@ app.get("/", (_req, res) => res.send("RTCT Alert API running"));
 // ---- Internal alert route (no JWT, but secured by shared secret) ----
 const INTERNAL_TOKEN = process.env.INTERNAL_ALERT_TOKEN;
 
+app.use("/internal", require("./routes/internal"));
+
 // Internal-only alert injection endpoint.
 // This bypasses JWT but is protected by a shared secret header.
 // It creates a "normal" alert row that looks just like those created by POST /alerts.
@@ -115,7 +122,8 @@ app.post("/internal/alert", express.json(), async (req, res) => {
       updatedAt: new Date(),
     };
 
-    const saved = await createAlert(alert);
+    await internalRepo.create(alert);
+    const saved = alert;
 
     // Reuse the same bus event as normal alerts so the SSE stream sees them.
     try {
@@ -123,7 +131,7 @@ app.post("/internal/alert", express.json(), async (req, res) => {
     } catch (e) {
       console.warn(
         "[internal-alert] failed to broadcast on bus:",
-        e.message || e
+        e.message || e,
       );
     }
 
@@ -196,7 +204,7 @@ app.get(
           startTime: p?.status?.startTime || null,
           restarts: containerStatuses.reduce(
             (n, c) => n + (c?.restartCount || 0),
-            0
+            0,
           ),
           containerCount: containerSpecs.length,
           ready,
@@ -246,7 +254,7 @@ app.get(
           totalContainers: 0,
           readyPods: 0,
           byPhase: {},
-        }
+        },
       );
 
       res.json({
@@ -259,7 +267,7 @@ app.get(
       console.error("[GET /k8/pods] error:", err?.response?.body || err);
       res.status(500).json({ error: "failed_to_list_pods" });
     }
-  }
+  },
 );
 
 // K8s: list deployments in the same namespace
@@ -346,7 +354,7 @@ app.get(
           fullyReady: 0,
           partiallyReady: 0,
           notReady: 0,
-        }
+        },
       );
 
       res.json({
@@ -359,7 +367,7 @@ app.get(
       console.error("[GET /k8/deployments] error:", err?.response?.body || err);
       res.status(500).json({ error: "failed_to_list_deployments" });
     }
-  }
+  },
 );
 
 // K8s: list cluster nodes (cluster-scope, requires RBAC for nodes)
@@ -414,7 +422,7 @@ app.get(
       console.error("[GET /k8/nodes] error:", err?.response?.body || err);
       res.status(500).json({ error: "failed_to_list_nodes" });
     }
-  }
+  },
 );
 
 // K8s: list namespaces with lightweight pod counts
@@ -445,14 +453,14 @@ app.get(
             const pods = podsBody.items || [];
             podCount = pods.length;
             runningPods = pods.filter(
-              (p) => (p?.status?.phase || "").toLowerCase() === "running"
+              (p) => (p?.status?.phase || "").toLowerCase() === "running",
             ).length;
           } catch (e) {
             // If we fail to list pods in some namespaces due to RBAC,
             // just skip counts for that namespace and carry on.
             console.warn(
               `[k8s namespaces] failed to list pods for namespace ${name}:`,
-              e?.response?.body || e?.message || e
+              e?.response?.body || e?.message || e,
             );
           }
         }
@@ -476,7 +484,7 @@ app.get(
       console.error("[GET /k8/namespaces] error:", err?.response?.body || err);
       res.status(500).json({ error: "failed_to_list_namespaces" });
     }
-  }
+  },
 );
 
 // Protected (JWT)

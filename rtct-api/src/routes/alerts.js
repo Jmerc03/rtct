@@ -9,6 +9,37 @@ const bus = require("../bus");
 
 const router = express.Router();
 
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
+
+router.post("/alert", async (req, res) => {
+  if (req.header("x-api-key") !== INTERNAL_API_KEY) {
+    return res.status(401).json({ error: "invalid api key" });
+  }
+
+  const { source, type, severity, message, confidence, data } = req.body || {};
+  if (!source || !type || !severity || !message || confidence == null) {
+    return res.status(400).json({ error: "missing fields" });
+  }
+
+  const alert = {
+    id: uuid(),
+    source,
+    type,
+    severity,
+    confidence,
+    message,
+    status: "new",
+    data: data ?? null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  await repo.create(alert);
+  bus.broadcast("alert.new", alert);
+
+  res.status(201).json(alert);
+});
+
 // POST /alerts  → create new alert
 router.post("/", async (req, res) => {
   const { source, type, severity, message, confidence, data } = req.body || {};

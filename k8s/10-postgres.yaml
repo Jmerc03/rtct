@@ -1,16 +1,4 @@
 apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: pgdata
-  namespace: rtct
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 5Gi
----
-apiVersion: v1
 kind: Service
 metadata:
   name: db
@@ -39,9 +27,11 @@ spec:
       securityContext:
         fsGroup: 999 # postgres user group
         fsGroupChangePolicy: "OnRootMismatch"
+      nodeSelector:
+        role: core
       containers:
         - name: postgres
-          image: postgres:18
+          image: postgres:16
           ports:
             - containerPort: 5432
           env:

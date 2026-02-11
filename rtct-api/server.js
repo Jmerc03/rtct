@@ -88,8 +88,6 @@ app.get("/", (_req, res) => res.send("RTCT Alert API running"));
 // ---- Internal alert route (no JWT, but secured by shared secret) ----
 const INTERNAL_TOKEN = process.env.INTERNAL_ALERT_TOKEN;
 
-app.use("/internal", require("./routes/internal"));
-
 // Internal-only alert injection endpoint.
 // This bypasses JWT but is protected by a shared secret header.
 // It creates a "normal" alert row that looks just like those created by POST /alerts.

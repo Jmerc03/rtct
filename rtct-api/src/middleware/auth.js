@@ -18,7 +18,7 @@ function makeRequireAuth(requiredRole) {
       return;
     }
 
-    const headers = req.headers || {};
+    const headers = req?.headers || {};
 
     // Accept standard Authorization: Bearer <token>
     const rawAuth = headers["authorization"] || headers["Authorization"] || "";
@@ -59,9 +59,8 @@ function makeRequireAuth(requiredRole) {
   };
 }
 
-// Default export: no specific role required
 const requireAuth = makeRequireAuth();
 
+requireAuth.withRole = (role) => makeRequireAuth(role);
+
 module.exports = requireAuth;
-// Role helper: requireAuth.withRole("operator") etc.
-module.exports.withRole = makeRequireAuth;

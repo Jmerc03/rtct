@@ -48,7 +48,11 @@ kind: ClusterRole
 metadata:
   name: rtct-api-read-cluster
 rules:
-  # Read-only cluster-scoped info for future K8s dashboard improvements
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources:
       - nodes

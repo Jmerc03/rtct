@@ -10,8 +10,8 @@ import { token } from "./auth";
 export async function listAlerts(params = {}) {
   const qs = new URLSearchParams(
     Object.fromEntries(
-      Object.entries(params).filter(([, v]) => v !== undefined && v !== "")
-    )
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== ""),
+    ),
   ).toString();
 
   const res = await apiFetch(`/alerts${qs ? `?${qs}` : ""}`);
@@ -35,9 +35,10 @@ export async function createAlert(doc) {
   return res.json();
 }
 
+// IMPORTANT: backend supports PATCH for partial updates (ack, status, etc.)
 export async function updateAlert(id, patch) {
   const res = await apiFetch(`/alerts/${id}`, {
-    method: "PUT",
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
   });
@@ -64,7 +65,8 @@ export async function getHealth() {
 
 // List pods
 export async function listPods() {
-  const res = await http(`/k8/pods`); // http() should already prefix /api
+  // apiFetch already prefixes the configured API base (usually /api)
+  const res = await apiFetch(`/k8/pods`);
   if (!res.ok) throw new Error(`listPods failed: ${res.status}`);
   return res.json();
 }
@@ -76,10 +78,10 @@ export function openAlertStream(onEvent) {
   const es = new EventSource(`${API_BASE}/stream?token=${t}`);
   es.addEventListener("alert.new", (e) => onEvent("new", JSON.parse(e.data)));
   es.addEventListener("alert.update", (e) =>
-    onEvent("update", JSON.parse(e.data))
+    onEvent("update", JSON.parse(e.data)),
   );
   es.addEventListener("alert.delete", (e) =>
-    onEvent("delete", JSON.parse(e.data))
+    onEvent("delete", JSON.parse(e.data)),
   );
   es.onerror = () => console.warn("[SSE] error (will auto-retry)");
   return es;

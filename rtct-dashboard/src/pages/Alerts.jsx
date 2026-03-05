@@ -11,7 +11,7 @@ const makeTest = async () => {
   await createAlert({
     source: "ui-tester",
     type: "demo",
-    severity: "medium",
+    severity: "high",
     confidence: 0.8,
     message: "Demo alert from dashboard",
     data: { by: "dashboard" },
@@ -62,7 +62,7 @@ export default function Alerts() {
         }
         if (type === "update") {
           return curr.map((a) =>
-            a.id === payload.id ? { ...a, ...payload } : a
+            a.id === payload.id ? { ...a, ...payload } : a,
           );
         }
         if (type === "delete") return curr.filter((a) => a.id !== payload.id);
@@ -165,11 +165,21 @@ export default function Alerts() {
               }
             }
 
+            const isNew =
+              a.status !== "ack" &&
+              a.firstSeenAt &&
+              Date.now() - a.firstSeenAt < 8000;
+
             return (
               <li
                 key={a.id}
                 style={{
-                  border: "1px solid #eee",
+                  border:
+                    a.status !== "ack"
+                      ? `${isNew ? 4 : 4}px ${isNew ? "solid" : "solid"} ${getSeverityColor(
+                          a.severity,
+                        )}`
+                      : "1px solid #ddd",
                   borderRadius: 12,
                   padding: 12,
                   background: "#fff",
@@ -233,6 +243,21 @@ export default function Alerts() {
       )}
     </div>
   );
+}
+
+function getSeverityColor(severity) {
+  switch ((severity || "").toLowerCase()) {
+    case "low":
+      return "#3b82f6"; // blue
+    case "medium":
+      return "#f59e0b"; // amber
+    case "high":
+      return "#dc2626"; // orange
+    case "critical":
+      return "#dc2626"; // red
+    default:
+      return "#999";
+  }
 }
 
 function Chip({ label }) {

@@ -46,7 +46,7 @@ export default function K8() {
       setPodsErr("");
       setPodsLoading(true);
       const token = localStorage.getItem("token");
-      const res = await fetch("/api/k8s/pods", {
+      const res = await fetch("/api/k8s/pods?namespace=rtct,default", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error(`Failed to load pods: ${res.status}`);
@@ -531,8 +531,8 @@ export default function K8() {
                       typeof p?.containerCount === "number"
                         ? p.containerCount
                         : Array.isArray(p?.containers)
-                        ? p.containers.length
-                        : 0;
+                          ? p.containers.length
+                          : 0;
                     const images = Array.isArray(p?.containers)
                       ? p.containers.map((c) => c?.image || "").filter(Boolean)
                       : [];
@@ -656,8 +656,8 @@ export default function K8() {
                                   : ""
                               }`
                             : lastExitCode !== null
-                            ? ` (code ${lastExitCode})`
-                            : ""}
+                              ? ` (code ${lastExitCode})`
+                              : ""}
                         </td>
                         <td
                           style={td}
@@ -667,7 +667,7 @@ export default function K8() {
                         </td>
                       </tr>
                     );
-                  }
+                  },
                 )}
               </tbody>
             </table>
@@ -772,8 +772,8 @@ export default function K8() {
                   const images = Array.isArray(d?.images)
                     ? d.images
                     : Array.isArray(d?.containers)
-                    ? d.containers.map((c) => c?.image || "").filter(Boolean)
-                    : [];
+                      ? d.containers.map((c) => c?.image || "").filter(Boolean)
+                      : [];
                   const imageText =
                     images.length > 0
                       ? images.map(shortImageName).join(", ")
@@ -782,8 +782,8 @@ export default function K8() {
                     readyReplicas !== null && replicas !== null
                       ? `${readyReplicas}/${replicas}`
                       : readyReplicas !== null
-                      ? String(readyReplicas)
-                      : "—";
+                        ? String(readyReplicas)
+                        : "—";
                   const availableText =
                     availableReplicas !== null
                       ? String(availableReplicas)
@@ -1161,7 +1161,7 @@ function statusColor(level) {
 function formatNodeRoles(labels) {
   if (!labels || typeof labels !== "object") return "";
   const entries = Object.keys(labels).filter((k) =>
-    k.startsWith("node-role.kubernetes.io/")
+    k.startsWith("node-role.kubernetes.io/"),
   );
   if (entries.length === 0) return "";
   return entries
@@ -1173,8 +1173,8 @@ function getNodeAddress(node, type) {
   const addrs = Array.isArray(node?.addresses)
     ? node.addresses
     : Array.isArray(node?.status?.addresses)
-    ? node.status.addresses
-    : [];
+      ? node.status.addresses
+      : [];
   const found = addrs.find((a) => a?.type === type);
   return found?.address || "";
 }

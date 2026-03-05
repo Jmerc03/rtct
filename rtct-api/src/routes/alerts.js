@@ -34,10 +34,10 @@ router.post("/alert", async (req, res) => {
     updatedAt: new Date(),
   };
 
-  await repo.create(alert);
-  bus.broadcast("alert.new", alert);
+  const saved = (await repo.create(alert)) || alert;
+  bus.broadcast("alert.new", saved);
 
-  res.status(201).json(alert);
+  res.status(201).json(saved);
 });
 
 // POST /alerts  → create new alert
@@ -62,9 +62,9 @@ router.post("/", async (req, res) => {
     updatedAt: new Date(),
   };
 
-  await repo.create(alert);
-  bus.broadcast("alert.new", alert);
-  res.status(201).json(alert);
+  const saved = (await repo.create(alert)) || alert;
+  bus.broadcast("alert.new", saved);
+  res.status(201).json(saved);
 });
 
 // Helper: parse a "YYYY-MM-DD" + optional "HH:MM" into a Date (UTC)
@@ -166,11 +166,47 @@ router.get("/:id", async (req, res) => {
 
 // PUT /alerts/:id
 router.put("/:id", async (req, res) => {
-  const { status, severity, message, confidence, data } = req.body || {};
+  const body = req.body || {};
+  let { status, severity, message, confidence, data } = body;
+
+  // Dashboard convenience: allow `acknowledged: true/false`
+  // without needing to send `status` explicitly.
+  if (!status && typeof body.acknowledged === "boolean") {
+    status = body.acknowledged ? "ack" : "new";
+  }
+
   const allowed = ["new", "ack", "resolved"];
   if (status && !allowed.includes(status)) {
     return res.status(400).json({ error: "invalid status" });
   }
+
+  const updated = await repo.update(req.params.id, {
+    status,
+    severity,
+    confidence,
+    message,
+    data,
+  });
+  if (!updated) return res.sendStatus(404);
+  bus.broadcast("alert.update", updated);
+  res.json(updated);
+});
+
+// PATCH /alerts/:id (alias for PUT)
+router.patch("/:id", async (req, res) => {
+  const body = req.body || {};
+  let { status, severity, message, confidence, data } = body;
+
+  // Dashboard convenience: allow `acknowledged: true/false`
+  if (!status && typeof body.acknowledged === "boolean") {
+    status = body.acknowledged ? "ack" : "new";
+  }
+
+  const allowed = ["new", "ack", "resolved"];
+  if (status && !allowed.includes(status)) {
+    return res.status(400).json({ error: "invalid status" });
+  }
+
   const updated = await repo.update(req.params.id, {
     status,
     severity,

@@ -4,16 +4,18 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 module.exports = {
   async create(a) {
     const q = `
-      INSERT INTO alerts (source, type, severity, confidence, message, data)
-      VALUES ($1,$2,$3,$4,$5,$6)
+      INSERT INTO alerts (id, source, type, severity, confidence, message, status, data)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       RETURNING *;
     `;
     const { rows } = await pool.query(q, [
+      a.id,
       a.source,
       a.type,
       a.severity,
       a.confidence,
       a.message,
+      a.status ?? "new",
       a.data ?? null,
     ]);
     return rows[0];

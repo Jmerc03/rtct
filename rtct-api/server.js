@@ -42,6 +42,29 @@ app.use(helmet());
 app.use(express.json({ limit: "1mb" }));
 app.use(morgan("dev"));
 
+// ---- HTTP method + path compatibility ----
+// The dashboard calls PATCH /api/alerts/:id when it's served behind a reverse proxy.
+// The API historically supported PUT /alerts/:id.
+//
+// To keep the API working in both setups:
+//   1) If requests arrive with a leading /api prefix, strip it.
+//   2) Translate PATCH -> PUT for /alerts/:id.
+app.use((req, _res, next) => {
+  // If we're being hit directly on a port-forward to the web server, or via a proxy
+  // that didn't rewrite /api away, Express will see /api/... in the path.
+  // Normalize by stripping /api so routes still match.
+  if (typeof req.url === "string" && req.url.startsWith("/api/")) {
+    req.url = req.url.replace(/^\/api/, "");
+  }
+
+  // Translate PATCH -> PUT for alert updates
+  if (req.method === "PATCH" && req.path.startsWith("/alerts/")) {
+    req.method = "PUT";
+  }
+
+  next();
+});
+
 // ---- Rate limiting for auth endpoints ----
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
 
@@ -120,8 +143,9 @@ app.post("/internal/alert", express.json(), async (req, res) => {
       updatedAt: new Date(),
     };
 
-    await internalRepo.create(alert);
-    const saved = alert;
+    // Persist alert and use the DB-returned row (it may override fields like `id`).
+    // This fixes the "ID changes after refresh" issue by broadcasting/returning the saved row.
+    const saved = (await internalRepo.create(alert)) || alert;
 
     // Reuse the same bus event as normal alerts so the SSE stream sees them.
     try {
@@ -154,18 +178,60 @@ app.get(
     try {
       res.set("Cache-Control", "no-store");
       // Namespace to query: use env if provided, otherwise default to the rtct namespace
-      const ns = process.env.K8S_NS || "rtct";
+      // namespace query support:
+      //   ?namespace=rtct
+      //   ?namespace=default
+      //   ?namespace=rtct,default
+      //   ?namespace=all
+      const nsParamRaw = (req.query.namespace || req.query.ns || "")
+        .toString()
+        .trim();
+
+      const defaultNs = process.env.K8S_NS || "rtct";
+
+      let requested = [];
+      let mode = "namespaced"; // "namespaced" | "multi" | "all"
+
+      if (!nsParamRaw) {
+        requested = [defaultNs];
+      } else if (nsParamRaw === "all" || nsParamRaw === "*") {
+        mode = "all";
+      } else {
+        requested = nsParamRaw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        mode = requested.length > 1 ? "multi" : "namespaced";
+        if (requested.length === 0) requested = [defaultNs];
+      }
 
       const api = getCoreApi();
 
-      // Use namespaced pod listing so RBAC can stay namespace-scoped.
-      // The client returns an object that may have a `body` property, or
-      // may already be the response body, so normalize it here.
-      const resp = await api.listNamespacedPod({ namespace: ns });
-      const body = resp?.body || resp || {};
+      let items = [];
 
-      const pods = (body.items || []).map((p) => {
-        const nsActual = p?.metadata?.namespace || ns;
+      if (mode === "all") {
+        const resp = await api.listPodForAllNamespaces();
+        const body = resp?.body || resp || {};
+        items = body.items || [];
+      } else if (mode === "multi") {
+        const results = await Promise.all(
+          requested.map(async (ns) => {
+            const resp = await api.listNamespacedPod({ namespace: ns });
+            const body = resp?.body || resp || {};
+            return body.items || [];
+          }),
+        );
+        items = results.flat();
+      } else {
+        const ns = requested[0];
+        const resp = await api.listNamespacedPod({ namespace: ns });
+        const body = resp?.body || resp || {};
+        items = body.items || [];
+      }
+
+      // From here on, use `items` instead of `(body.items || [])`
+      const pods = items.map((p) => {
+        const nsActual = p?.metadata?.namespace || requested[0] || defaultNs;
         const containerSpecs = p?.spec?.containers || [];
         const containerStatuses = p?.status?.containerStatuses || [];
         const conditions = p?.status?.conditions || [];
@@ -173,7 +239,6 @@ app.get(
         const readyCond = conditions.find((c) => c.type === "Ready");
         const ready = readyCond?.status === "True";
 
-        // Basic restart info from last terminated container state (if present)
         let restartReason = null;
         let lastRestartAt = null;
         let lastExitCode = null;
@@ -256,7 +321,9 @@ app.get(
       );
 
       res.json({
-        namespace: ns,
+        namespace:
+          mode === "all" ? "all" : mode === "multi" ? requested : requested[0],
+        requestedNamespaces: mode === "all" ? ["*"] : requested,
         summary,
         pods,
         fetchedAt: new Date().toISOString(),

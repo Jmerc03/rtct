@@ -29,6 +29,28 @@ spec:
               value: "production"
             - name: K8S_NS
               value: "rtct"
+            - name: INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rtct-secrets
+                  key: INTERNAL_API_KEY
+            - name: INTERNAL_ALERT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rtct-secrets
+                  key: INTERNAL_ALERT_TOKEN
+
+            # Force these to come from the K8s Secret (and override envFrom if present)
+            - name: INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rtct-secrets
+                  key: INTERNAL_API_KEY
+            - name: INTERNAL_ALERT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rtct-secrets
+                  key: INTERNAL_ALERT_TOKEN
           readinessProbe:
             httpGet: { path: /health, port: 4000 }
             initialDelaySeconds: 5

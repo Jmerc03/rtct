@@ -6,6 +6,11 @@ export default function K8() {
   const [err, setErr] = useState("");
   const [lastChecked, setLastChecked] = useState(null);
   const [pods, setPods] = useState([]);
+  const [selectedPodNamespaces, setSelectedPodNamespaces] = useState([
+    "rtct",
+    "default",
+  ]);
+  const [allPodNamespaces, setAllPodNamespaces] = useState(false);
   const [podsNamespace, setPodsNamespace] = useState("");
   const [podsSummary, setPodsSummary] = useState(null);
   const [podsErr, setPodsErr] = useState("");
@@ -46,16 +51,28 @@ export default function K8() {
       setPodsErr("");
       setPodsLoading(true);
       const token = localStorage.getItem("token");
-      const res = await fetch("/api/k8s/pods?namespace=rtct,default", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const namespaceParam = allPodNamespaces
+        ? "all"
+        : selectedPodNamespaces.length > 0
+          ? selectedPodNamespaces.join(",")
+          : "rtct,default";
+
+      const res = await fetch(
+        `/api/k8s/pods?namespace=${encodeURIComponent(namespaceParam)}`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        },
+      );
       if (!res.ok) throw new Error(`Failed to load pods: ${res.status}`);
       const data = await res.json();
       // Backend returns { namespace, summary, pods: [...] } or possibly { items: [...] } or an array; normalize
       const items = Array.isArray(data) ? data : data.pods || data.items || [];
       setPods(items);
       if (!Array.isArray(data)) {
-        setPodsNamespace(data.namespace || "");
+        const nsValue = Array.isArray(data.namespace)
+          ? data.namespace.join(", ")
+          : data.namespace || "";
+        setPodsNamespace(nsValue);
         setPodsSummary(data.summary || null);
       } else {
         setPodsNamespace("");
@@ -159,6 +176,10 @@ export default function K8() {
     loadDeployments();
     loadNodes();
     loadNamespaces();
+    if (allPodNamespaces) {
+      const allNames = namespaces.map((ns) => ns?.name || "").filter(Boolean);
+      setSelectedPodNamespaces(allNames);
+    }
     const id = setInterval(() => {
       loadPods();
       loadDeployments();
@@ -166,8 +187,25 @@ export default function K8() {
       loadNamespaces();
     }, 15000);
     return () => clearInterval(id);
-  }, []);
+  }, [allPodNamespaces, selectedPodNamespaces]);
 
+  function handleToggleAllPodNamespaces(checked) {
+    setAllPodNamespaces(checked);
+    if (checked) {
+      setSelectedPodNamespaces(
+        namespaces.map((ns) => ns?.name || "").filter(Boolean),
+      );
+    }
+  }
+
+  function handleTogglePodNamespace(namespaceName, checked) {
+    setSelectedPodNamespaces((prev) => {
+      if (checked) {
+        return Array.from(new Set([...prev, namespaceName]));
+      }
+      return prev.filter((ns) => ns !== namespaceName);
+    });
+  }
   const nsResources = computeNamespaceResources(pods);
 
   return (
@@ -428,10 +466,93 @@ export default function K8() {
           }}
         >
           <h3>Cluster Pods</h3>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+            }}
+          >
+            <label
+              style={{
+                fontSize: 12,
+                display: "flex",
+                gap: 6,
+                alignItems: "center",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={allPodNamespaces}
+                onChange={(e) => handleToggleAllPodNamespaces(e.target.checked)}
+              />
+              All namespaces
+            </label>
+
+            <div
+              style={{
+                fontSize: 12,
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                minWidth: 220,
+              }}
+            >
+              <span>Namespaces</span>
+              <div
+                style={{
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: 8,
+                  background: allPodNamespaces ? "#f8f8f8" : "#fff",
+                  maxHeight: 160,
+                  overflowY: "auto",
+                  display: "grid",
+                  gap: 6,
+                }}
+              >
+                {namespaces.length === 0 ? (
+                  <span style={{ color: "#666" }}>
+                    {namespacesLoading
+                      ? "Loading namespaces…"
+                      : "No namespaces"}
+                  </span>
+                ) : (
+                  namespaces.map((ns) => {
+                    const value = ns?.name || "";
+                    const checked = selectedPodNamespaces.includes(value);
+                    return (
+                      <label
+                        key={value}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) =>
+                            handleTogglePodNamespace(value, e.target.checked)
+                          }
+                          disabled={namespacesLoading}
+                        />
+                        <span>{value}</span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
             <button onClick={loadPods} disabled={podsLoading}>
               {podsLoading ? "Loading…" : "Reload"}
             </button>
+
             <label style={{ fontSize: 12 }}>
               <input
                 type="checkbox"
@@ -449,9 +570,16 @@ export default function K8() {
             {new Date(podsSummary.fetchedAt).toLocaleTimeString()}
           </p>
         )}
-        {podsNamespace && (
+        {(podsNamespace ||
+          allPodNamespaces ||
+          selectedPodNamespaces.length > 0) && (
           <p style={{ margin: "4px 0", fontSize: 12, color: "#555" }}>
-            Namespace: <code>{podsNamespace}</code>
+            Namespace filter:{" "}
+            <code>
+              {allPodNamespaces
+                ? "all"
+                : podsNamespace || selectedPodNamespaces.join(", ")}
+            </code>
             {podsSummary && (
               <>
                 {" "}

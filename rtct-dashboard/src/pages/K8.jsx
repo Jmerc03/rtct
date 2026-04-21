@@ -6,10 +6,7 @@ export default function K8() {
   const [err, setErr] = useState("");
   const [lastChecked, setLastChecked] = useState(null);
   const [pods, setPods] = useState([]);
-  const [selectedPodNamespaces, setSelectedPodNamespaces] = useState([
-    "rtct",
-    "default",
-  ]);
+  const [selectedPodNamespaces, setSelectedPodNamespaces] = useState(["rtct"]);
   const [allPodNamespaces, setAllPodNamespaces] = useState(false);
   const [podsNamespace, setPodsNamespace] = useState("");
   const [podsSummary, setPodsSummary] = useState(null);
@@ -55,7 +52,7 @@ export default function K8() {
         ? "all"
         : selectedPodNamespaces.length > 0
           ? selectedPodNamespaces.join(",")
-          : "rtct,default";
+          : "rtct";
 
       const res = await fetch(
         `/api/k8s/pods?namespace=${encodeURIComponent(namespaceParam)}`,
@@ -176,18 +173,42 @@ export default function K8() {
     loadDeployments();
     loadNodes();
     loadNamespaces();
-    if (allPodNamespaces) {
-      const allNames = namespaces.map((ns) => ns?.name || "").filter(Boolean);
-      setSelectedPodNamespaces(allNames);
-    }
+
     const id = setInterval(() => {
       loadPods();
       loadDeployments();
       loadNodes();
       loadNamespaces();
     }, 15000);
+
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    loadPods();
   }, [allPodNamespaces, selectedPodNamespaces]);
+
+  useEffect(() => {
+    const allNames = namespaces.map((ns) => ns?.name || "").filter(Boolean);
+    if (allNames.length === 0) return;
+
+    if (allPodNamespaces) {
+      const missing = allNames.some(
+        (name) => !selectedPodNamespaces.includes(name),
+      );
+      if (missing || selectedPodNamespaces.length !== allNames.length) {
+        setSelectedPodNamespaces(allNames);
+      }
+      return;
+    }
+
+    const everyChecked = allNames.every((name) =>
+      selectedPodNamespaces.includes(name),
+    );
+    if (everyChecked && !allPodNamespaces) {
+      setAllPodNamespaces(true);
+    }
+  }, [allPodNamespaces, namespaces, selectedPodNamespaces]);
 
   function handleToggleAllPodNamespaces(checked) {
     setAllPodNamespaces(checked);
@@ -195,6 +216,8 @@ export default function K8() {
       setSelectedPodNamespaces(
         namespaces.map((ns) => ns?.name || "").filter(Boolean),
       );
+    } else {
+      setSelectedPodNamespaces([]);
     }
   }
 
@@ -208,221 +231,263 @@ export default function K8() {
   }
   const nsResources = computeNamespaceResources(pods);
 
+  const visiblePods = showOnlyProblemPods ? pods.filter(isProblemPod) : pods;
+  const visibleDeployments = showOnlyProblemDeployments
+    ? deployments.filter(isProblemDeployment)
+    : deployments;
+  const problemPodCount = pods.filter(isProblemPod).length;
+  const problemDeploymentCount = deployments.filter(isProblemDeployment).length;
+  const readyNodeCount = nodes.filter((n) => {
+    const readyCond = Array.isArray(n?.conditions)
+      ? n.conditions.find((c) => c?.type === "Ready")
+      : null;
+    return readyCond?.status === "True";
+  }).length;
+
   return (
     <div style={{ padding: 16, display: "grid", gap: 16 }}>
       <h2>K8</h2>
 
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: 12,
+        }}
+      >
+        <div style={miniStatCard}>
+          <span style={miniStatLabel}>Pods</span>
+          <strong style={miniStatValue}>{pods.length}</strong>
+          <span style={miniStatSubtext}>Issues: {problemPodCount}</span>
+        </div>
+
+        <div style={miniStatCard}>
+          <span style={miniStatLabel}>Deployments</span>
+          <strong style={miniStatValue}>{deployments.length}</strong>
+          <span style={miniStatSubtext}>Issues: {problemDeploymentCount}</span>
+        </div>
+
+        <div style={miniStatCard}>
+          <span style={miniStatLabel}>Nodes</span>
+          <strong style={miniStatValue}>{nodes.length}</strong>
+          <span style={miniStatSubtext}>Ready: {readyNodeCount}</span>
+        </div>
+
+        <div style={miniStatCard}>
+          <span style={miniStatLabel}>Namespaces</span>
+          <strong style={miniStatValue}>{namespaces.length}</strong>
+          <span style={miniStatSubtext}>
+            Filter:{" "}
+            {allPodNamespaces ? "all" : selectedPodNamespaces.length || 0}
+          </span>
+        </div>
+      </div>
+
       <div style={card}>
-        <div style={card}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <h3>Cluster Nodes</h3>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button onClick={loadNodes} disabled={nodesLoading}>
-                {nodesLoading ? "Loading…" : "Reload"}
-              </button>
-            </div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <h3>Cluster Nodes</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={loadNodes} disabled={nodesLoading}>
+              {nodesLoading ? "Loading…" : "Reload"}
+            </button>
           </div>
-          {nodesErr && <p style={{ color: "#b00" }}>{nodesErr}</p>}
-          {nodes.length === 0 && !nodesLoading ? (
-            <p>No nodes found.</p>
-          ) : (
-            <>
-              {nodesFetchedAt && (
-                <p style={{ margin: "4px 0", fontSize: 12, color: "#555" }}>
-                  Nodes: <b>{nodes.length}</b> — Last updated:{" "}
-                  {new Date(nodesFetchedAt).toLocaleTimeString()}
-                </p>
-              )}
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr>
-                      <th style={th}>Name</th>
-                      <th style={th}>Roles</th>
-                      <th style={th}>Ready</th>
-                      <th style={th}>Internal IP</th>
-                      <th style={th}>Kubelet</th>
-                      <th style={th}>OS Image</th>
-                      <th style={th}>CPU (capacity)</th>
-                      <th style={th}>CPU (allocatable)</th>
-                      <th style={th}>Mem (capacity)</th>
-                      <th style={th}>Mem (allocatable)</th>
-                      <th style={th}>Age</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {nodes.map((n) => {
-                      const name = n?.name || "";
-                      const created = n?.creationTimestamp
-                        ? new Date(n.creationTimestamp)
-                        : null;
-                      const ageMs = created
-                        ? Date.now() - created.getTime()
-                        : 0;
-                      const age = created ? humanDuration(ageMs) : "";
-                      const roles = formatNodeRoles(n?.labels);
-                      const internalIP = getNodeAddress(n, "InternalIP");
-                      const kubelet = n?.nodeInfo?.kubeletVersion || "";
-                      const osImage = n?.nodeInfo?.osImage || "";
-                      const readyCond = Array.isArray(n?.conditions)
-                        ? n.conditions.find((c) => c?.type === "Ready")
-                        : null;
-                      const ready = readyCond?.status === "True";
-                      const readyText = ready
-                        ? "Ready"
-                        : readyCond?.reason || "NotReady";
-                      const readyLevel = ready ? "ok" : "error";
-
-                      const capacity = n?.capacity || {};
-                      const alloc = n?.allocatable || {};
-                      const capCpu = capacity.cpu
-                        ? formatCpu(parseCpuQuantity(capacity.cpu))
-                        : "—";
-                      const allocCpu = alloc.cpu
-                        ? formatCpu(parseCpuQuantity(alloc.cpu))
-                        : "—";
-                      const capMem = capacity.memory
-                        ? formatBytes(parseMemoryQuantity(capacity.memory))
-                        : "—";
-                      const allocMem = alloc.memory
-                        ? formatBytes(parseMemoryQuantity(alloc.memory))
-                        : "—";
-
-                      return (
-                        <tr key={n?.uid || name}>
-                          <td style={td}>
-                            <code>{name}</code>
-                          </td>
-                          <td style={td}>{roles || "—"}</td>
-                          <td
-                            style={{
-                              ...td,
-                              color: statusColor(readyLevel),
-                              fontWeight: ready ? "500" : "400",
-                            }}
-                            title={readyCond?.message || ""}
-                          >
-                            {readyText}
-                          </td>
-                          <td style={td}>{internalIP || "—"}</td>
-                          <td style={td}>{kubelet || "—"}</td>
-                          <td style={td}>{osImage || "—"}</td>
-                          <td style={td}>{capCpu}</td>
-                          <td style={td}>{allocCpu}</td>
-                          <td style={td}>{capMem}</td>
-                          <td style={td}>{allocMem}</td>
-                          <td
-                            style={td}
-                            title={created?.toLocaleString?.() || ""}
-                          >
-                            {age}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
         </div>
-        <div style={card}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <h3>Namespaces</h3>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button onClick={loadNamespaces} disabled={namespacesLoading}>
-                {namespacesLoading ? "Loading…" : "Reload"}
-              </button>
+        {nodesErr && <p style={{ color: "#b00" }}>{nodesErr}</p>}
+        {nodes.length === 0 && !nodesLoading ? (
+          <p>No nodes found.</p>
+        ) : (
+          <>
+            {nodesFetchedAt && (
+              <p style={{ margin: "4px 0", fontSize: 12, color: "#555" }}>
+                Nodes: <b>{nodes.length}</b> — Last updated:{" "}
+                {new Date(nodesFetchedAt).toLocaleTimeString()}
+              </p>
+            )}
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={th}>Name</th>
+                    <th style={th}>Roles</th>
+                    <th style={th}>Ready</th>
+                    <th style={th}>Internal IP</th>
+                    <th style={th}>Kubelet</th>
+                    <th style={th}>OS Image</th>
+                    <th style={th}>CPU (capacity)</th>
+                    <th style={th}>CPU (allocatable)</th>
+                    <th style={th}>Mem (capacity)</th>
+                    <th style={th}>Mem (allocatable)</th>
+                    <th style={th}>Age</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {nodes.map((n) => {
+                    const name = n?.name || "";
+                    const created = n?.creationTimestamp
+                      ? new Date(n.creationTimestamp)
+                      : null;
+                    const ageMs = created ? Date.now() - created.getTime() : 0;
+                    const age = created ? humanDuration(ageMs) : "";
+                    const roles = formatNodeRoles(n?.labels);
+                    const internalIP = getNodeAddress(n, "InternalIP");
+                    const kubelet = n?.nodeInfo?.kubeletVersion || "";
+                    const osImage = n?.nodeInfo?.osImage || "";
+                    const readyCond = Array.isArray(n?.conditions)
+                      ? n.conditions.find((c) => c?.type === "Ready")
+                      : null;
+                    const ready = readyCond?.status === "True";
+                    const readyText = ready
+                      ? "Ready"
+                      : readyCond?.reason || "NotReady";
+                    const readyLevel = ready ? "ok" : "error";
+
+                    const capacity = n?.capacity || {};
+                    const alloc = n?.allocatable || {};
+                    const capCpu = capacity.cpu
+                      ? formatCpu(parseCpuQuantity(capacity.cpu))
+                      : "—";
+                    const allocCpu = alloc.cpu
+                      ? formatCpu(parseCpuQuantity(alloc.cpu))
+                      : "—";
+                    const capMem = capacity.memory
+                      ? formatBytes(parseMemoryQuantity(capacity.memory))
+                      : "—";
+                    const allocMem = alloc.memory
+                      ? formatBytes(parseMemoryQuantity(alloc.memory))
+                      : "—";
+
+                    return (
+                      <tr key={n?.uid || name}>
+                        <td style={td}>
+                          <code>{name}</code>
+                        </td>
+                        <td style={td}>{roles || "—"}</td>
+                        <td
+                          style={{
+                            ...td,
+                            color: statusColor(readyLevel),
+                            fontWeight: ready ? "500" : "400",
+                          }}
+                          title={readyCond?.message || ""}
+                        >
+                          {readyText}
+                        </td>
+                        <td style={td}>{internalIP || "—"}</td>
+                        <td style={td}>{kubelet || "—"}</td>
+                        <td style={td}>{osImage || "—"}</td>
+                        <td style={td}>{capCpu}</td>
+                        <td style={td}>{allocCpu}</td>
+                        <td style={td}>{capMem}</td>
+                        <td style={td}>{allocMem}</td>
+                        <td
+                          style={td}
+                          title={created?.toLocaleString?.() || ""}
+                        >
+                          {age}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
+          </>
+        )}
+      </div>
+      <div style={card}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <h3>Namespaces</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={loadNamespaces} disabled={namespacesLoading}>
+              {namespacesLoading ? "Loading…" : "Reload"}
+            </button>
           </div>
-          {namespacesErr && <p style={{ color: "#b00" }}>{namespacesErr}</p>}
-          {namespaces.length === 0 && !namespacesLoading ? (
-            <p>No namespaces found.</p>
-          ) : (
-            <>
-              {namespacesFetchedAt && (
-                <p style={{ margin: "4px 0", fontSize: 12, color: "#555" }}>
-                  Namespaces: <b>{namespaces.length}</b> — Last updated:{" "}
-                  {new Date(namespacesFetchedAt).toLocaleTimeString()}
-                </p>
-              )}
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr>
-                      <th style={th}>Name</th>
-                      <th style={th}>Phase</th>
-                      <th style={th}>Pods</th>
-                      <th style={th}>Running</th>
-                      <th style={th}>Age</th>
-                      <th style={th}>Labels</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {namespaces.map((ns) => {
-                      const name = ns?.name || "";
-                      const phase = ns?.phase || "";
-                      const podCount =
-                        typeof ns?.podCount === "number" ? ns.podCount : null;
-                      const runningPods =
-                        typeof ns?.runningPods === "number"
-                          ? ns.runningPods
-                          : null;
-                      const created = ns?.creationTimestamp
-                        ? new Date(ns.creationTimestamp)
-                        : null;
-                      const ageMs = created
-                        ? Date.now() - created.getTime()
-                        : 0;
-                      const age = created ? humanDuration(ageMs) : "";
-                      const labelsText = formatLabels(ns?.labels);
-
-                      return (
-                        <tr key={ns?.uid || name}>
-                          <td style={td}>
-                            <code>{name}</code>
-                          </td>
-                          <td style={{ ...td, color: phaseColor(phase) }}>
-                            {phase || "—"}
-                          </td>
-                          <td style={td}>
-                            {podCount !== null ? podCount : "—"}
-                          </td>
-                          <td style={td}>
-                            {runningPods !== null ? runningPods : "—"}
-                          </td>
-                          <td
-                            style={td}
-                            title={created?.toLocaleString?.() || ""}
-                          >
-                            {age}
-                          </td>
-                          <td style={td} title={labelsText}>
-                            {labelsText || "—"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
         </div>
+        {namespacesErr && <p style={{ color: "#b00" }}>{namespacesErr}</p>}
+        {namespaces.length === 0 && !namespacesLoading ? (
+          <p>No namespaces found.</p>
+        ) : (
+          <>
+            {namespacesFetchedAt && (
+              <p style={{ margin: "4px 0", fontSize: 12, color: "#555" }}>
+                Namespaces: <b>{namespaces.length}</b> — Last updated:{" "}
+                {new Date(namespacesFetchedAt).toLocaleTimeString()}
+              </p>
+            )}
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={th}>Name</th>
+                    <th style={th}>Phase</th>
+                    <th style={th}>Pods</th>
+                    <th style={th}>Running</th>
+                    <th style={th}>Age</th>
+                    <th style={th}>Labels</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {namespaces.map((ns) => {
+                    const name = ns?.name || "";
+                    const phase = ns?.phase || "";
+                    const podCount =
+                      typeof ns?.podCount === "number" ? ns.podCount : null;
+                    const runningPods =
+                      typeof ns?.runningPods === "number"
+                        ? ns.runningPods
+                        : null;
+                    const created = ns?.creationTimestamp
+                      ? new Date(ns.creationTimestamp)
+                      : null;
+                    const ageMs = created ? Date.now() - created.getTime() : 0;
+                    const age = created ? humanDuration(ageMs) : "";
+                    const labelsText = formatLabels(ns?.labels);
+
+                    return (
+                      <tr key={ns?.uid || name}>
+                        <td style={td}>
+                          <code>{name}</code>
+                        </td>
+                        <td style={{ ...td, color: phaseColor(phase) }}>
+                          {phase || "—"}
+                        </td>
+                        <td style={td}>{podCount !== null ? podCount : "—"}</td>
+                        <td style={td}>
+                          {runningPods !== null ? runningPods : "—"}
+                        </td>
+                        <td
+                          style={td}
+                          title={created?.toLocaleString?.() || ""}
+                        >
+                          {age}
+                        </td>
+                        <td style={td} title={labelsText}>
+                          {labelsText || "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+      <div style={card}>
         <div
           style={{
             display: "flex",
@@ -470,9 +535,7 @@ export default function K8() {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 8,
-              flexWrap: "wrap",
-              justifyContent: "flex-end",
+              gap: 12,
             }}
           >
             <label
@@ -507,9 +570,10 @@ export default function K8() {
                   borderRadius: 8,
                   padding: 8,
                   background: allPodNamespaces ? "#f8f8f8" : "#fff",
-                  maxHeight: 160,
+                  maxHeight: 50,
                   overflowY: "auto",
                   display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr",
                   gap: 6,
                 }}
               >
@@ -549,19 +613,29 @@ export default function K8() {
               </div>
             </div>
 
-            <button onClick={loadPods} disabled={podsLoading}>
-              {podsLoading ? "Loading…" : "Reload"}
-            </button>
+            <div
+              style={{
+                gridColumn: "1 / -1", // <-- THIS forces new row
+                display: "flex",
+                justifyContent: "flex-end",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <button onClick={loadPods} disabled={podsLoading}>
+                {podsLoading ? "Loading…" : "Reload"}
+              </button>
 
-            <label style={{ fontSize: 12 }}>
-              <input
-                type="checkbox"
-                checked={showOnlyProblemPods}
-                onChange={(e) => setShowOnlyProblemPods(e.target.checked)}
-                style={{ marginRight: 4 }}
-              />
-              Only show pods with issues
-            </label>
+              <label style={{ fontSize: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={showOnlyProblemPods}
+                  onChange={(e) => setShowOnlyProblemPods(e.target.checked)}
+                  style={{ marginRight: 4 }}
+                />
+                Only show pods with issues
+              </label>
+            </div>
           </div>
         </div>
         {podsSummary?.fetchedAt && (
@@ -613,9 +687,7 @@ export default function K8() {
           </p>
         )}
         {podsErr && <p style={{ color: "#b00" }}>{podsErr}</p>}
-        {(showOnlyProblemPods
-          ? pods.filter(isProblemPod).length
-          : pods.length) === 0 && !podsLoading ? (
+        {visiblePods.length === 0 && !podsLoading ? (
           <p>No pods found.</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -641,162 +713,148 @@ export default function K8() {
                 </tr>
               </thead>
               <tbody>
-                {(showOnlyProblemPods ? pods.filter(isProblemPod) : pods).map(
-                  (p) => {
-                    const ns = p?.namespace || "";
-                    const name = p?.name || "";
-                    const phase = p?.phase || "";
-                    const restarts =
-                      typeof p?.restarts === "number" ? p.restarts : 0;
-                    const podStatus = getPodStatus(p);
-                    const created = p?.startTime ? new Date(p.startTime) : null;
-                    const ageMs = created ? Date.now() - created.getTime() : 0;
-                    const age = created ? humanDuration(ageMs) : "";
-                    const node = p?.node || "";
-                    const podIP = p?.podIP || "";
-                    const ready = !!p?.ready;
-                    const containerCount =
-                      typeof p?.containerCount === "number"
-                        ? p.containerCount
-                        : Array.isArray(p?.containers)
-                          ? p.containers.length
-                          : 0;
-                    const images = Array.isArray(p?.containers)
-                      ? p.containers.map((c) => c?.image || "").filter(Boolean)
-                      : [];
-                    const imageText =
-                      images.length > 0
-                        ? images.map(shortImageName).join(", ")
-                        : "—";
-                    const restartReason =
-                      p?.restartReason ||
-                      (restarts > 0 ? "unknown (see pod events)" : "—");
+                {visiblePods.map((p) => {
+                  const ns = p?.namespace || "";
+                  const name = p?.name || "";
+                  const phase = p?.phase || "";
+                  const restarts =
+                    typeof p?.restarts === "number" ? p.restarts : 0;
+                  const podStatus = getPodStatus(p);
+                  const created = p?.startTime ? new Date(p.startTime) : null;
+                  const ageMs = created ? Date.now() - created.getTime() : 0;
+                  const age = created ? humanDuration(ageMs) : "";
+                  const node = p?.node || "";
+                  const podIP = p?.podIP || "";
+                  const ready = !!p?.ready;
+                  const containerCount =
+                    typeof p?.containerCount === "number"
+                      ? p.containerCount
+                      : Array.isArray(p?.containers)
+                        ? p.containers.length
+                        : 0;
+                  const images = Array.isArray(p?.containers)
+                    ? p.containers.map((c) => c?.image || "").filter(Boolean)
+                    : [];
+                  const imageText =
+                    images.length > 0
+                      ? images.map(shortImageName).join(", ")
+                      : "—";
+                  const restartReason =
+                    p?.restartReason ||
+                    (restarts > 0 ? "unknown (see pod events)" : "—");
 
-                    const hostIP = p?.hostIP || "";
-                    const readyReason = p?.readyReason || "";
-                    const lastRestartAt = p?.lastRestartAt
-                      ? new Date(p.lastRestartAt)
-                      : null;
-                    const lastRestartText = lastRestartAt
-                      ? humanDuration(Date.now() - lastRestartAt.getTime())
-                      : "";
-                    const lastExitCode =
-                      typeof p?.lastExitCode === "number"
-                        ? p.lastExitCode
-                        : null;
+                  const hostIP = p?.hostIP || "";
+                  const readyReason = p?.readyReason || "";
+                  const lastRestartAt = p?.lastRestartAt
+                    ? new Date(p.lastRestartAt)
+                    : null;
+                  const lastRestartText = lastRestartAt
+                    ? humanDuration(Date.now() - lastRestartAt.getTime())
+                    : "";
+                  const lastExitCode =
+                    typeof p?.lastExitCode === "number" ? p.lastExitCode : null;
 
-                    let cpuReqCores = 0;
-                    let cpuLimCores = 0;
-                    let memReqBytes = 0;
-                    let memLimBytes = 0;
+                  let cpuReqCores = 0;
+                  let cpuLimCores = 0;
+                  let memReqBytes = 0;
+                  let memLimBytes = 0;
 
-                    if (Array.isArray(p?.containers)) {
-                      for (const c of p.containers) {
-                        const res = c?.resources || {};
-                        const req = res.requests || {};
-                        const lim = res.limits || {};
-                        cpuReqCores += parseCpuQuantity(req.cpu);
-                        cpuLimCores += parseCpuQuantity(lim.cpu);
-                        memReqBytes += parseMemoryQuantity(req.memory);
-                        memLimBytes += parseMemoryQuantity(lim.memory);
-                      }
+                  if (Array.isArray(p?.containers)) {
+                    for (const c of p.containers) {
+                      const res = c?.resources || {};
+                      const req = res.requests || {};
+                      const lim = res.limits || {};
+                      cpuReqCores += parseCpuQuantity(req.cpu);
+                      cpuLimCores += parseCpuQuantity(lim.cpu);
+                      memReqBytes += parseMemoryQuantity(req.memory);
+                      memLimBytes += parseMemoryQuantity(lim.memory);
                     }
+                  }
 
-                    return (
-                      <tr key={p?.uid || `${ns}/${name}`}>
-                        <td style={td}>{ns}</td>
-                        <td style={td}>
-                          <code>{name}</code>
-                        </td>
-                        <td style={{ ...td, color: phaseColor(phase) }}>
-                          {phase}
-                        </td>
-                        <td
-                          style={{
-                            ...td,
-                            color: statusColor(podStatus.level),
-                            fontWeight:
-                              podStatus.level === "ok" ? "500" : "400",
-                          }}
-                          title={
-                            restartReason ||
-                            readyReason ||
-                            podStatus.label ||
-                            ""
-                          }
-                        >
-                          {podStatus.label}
-                        </td>
-                        <td
-                          style={{
-                            ...td,
-                            color: ready ? "#0a0" : "#b00",
-                            fontWeight: ready ? "500" : "400",
-                          }}
-                          title={
-                            readyReason ||
-                            (ready ? "Pod is Ready" : "Pod is not Ready")
-                          }
-                        >
-                          {ready ? "Yes" : "No"}
-                        </td>
-                        <td style={td}>{node}</td>
-                        <td
-                          style={td}
-                          title={hostIP ? `Node IP: ${hostIP}` : ""}
-                        >
-                          {podIP}
-                        </td>
-                        <td style={td}>{containerCount}</td>
-                        <td style={td} title={images.join(", ")}>
-                          {imageText}
-                        </td>
-                        <td style={td}>
-                          {cpuReqCores > 0 ? formatCpu(cpuReqCores) : "—"}
-                        </td>
-                        <td style={td}>
-                          {cpuLimCores > 0 ? formatCpu(cpuLimCores) : "—"}
-                        </td>
-                        <td style={td}>
-                          {memReqBytes > 0 ? formatBytes(memReqBytes) : "—"}
-                        </td>
-                        <td style={td}>
-                          {memLimBytes > 0 ? formatBytes(memLimBytes) : "—"}
-                        </td>
-                        <td style={td}>{restarts}</td>
-                        <td
-                          style={td}
-                          title={
-                            lastRestartAt
-                              ? `Last restart at ${lastRestartAt.toLocaleString()}${
-                                  lastExitCode !== null
-                                    ? ` (exit code ${lastExitCode})`
-                                    : ""
-                                }`
-                              : ""
-                          }
-                        >
-                          {restartReason || (restarts > 0 ? "unknown" : "—")}
-                          {lastRestartText
-                            ? ` · ${lastRestartText} ago${
+                  return (
+                    <tr key={p?.uid || `${ns}/${name}`}>
+                      <td style={td}>{ns}</td>
+                      <td style={td}>
+                        <code>{name}</code>
+                      </td>
+                      <td style={{ ...td, color: phaseColor(phase) }}>
+                        {phase}
+                      </td>
+                      <td
+                        style={{
+                          ...td,
+                          color: statusColor(podStatus.level),
+                          fontWeight: podStatus.level === "ok" ? "500" : "400",
+                        }}
+                        title={
+                          restartReason || readyReason || podStatus.label || ""
+                        }
+                      >
+                        {podStatus.label}
+                      </td>
+                      <td
+                        style={{
+                          ...td,
+                          color: ready ? "#0a0" : "#b00",
+                          fontWeight: ready ? "500" : "400",
+                        }}
+                        title={
+                          readyReason ||
+                          (ready ? "Pod is Ready" : "Pod is not Ready")
+                        }
+                      >
+                        {ready ? "Yes" : "No"}
+                      </td>
+                      <td style={td}>{node}</td>
+                      <td style={td} title={hostIP ? `Node IP: ${hostIP}` : ""}>
+                        {podIP}
+                      </td>
+                      <td style={td}>{containerCount}</td>
+                      <td style={td} title={images.join(", ")}>
+                        {imageText}
+                      </td>
+                      <td style={td}>
+                        {cpuReqCores > 0 ? formatCpu(cpuReqCores) : "—"}
+                      </td>
+                      <td style={td}>
+                        {cpuLimCores > 0 ? formatCpu(cpuLimCores) : "—"}
+                      </td>
+                      <td style={td}>
+                        {memReqBytes > 0 ? formatBytes(memReqBytes) : "—"}
+                      </td>
+                      <td style={td}>
+                        {memLimBytes > 0 ? formatBytes(memLimBytes) : "—"}
+                      </td>
+                      <td style={td}>{restarts}</td>
+                      <td
+                        style={td}
+                        title={
+                          lastRestartAt
+                            ? `Last restart at ${lastRestartAt.toLocaleString()}${
                                 lastExitCode !== null
-                                  ? ` (code ${lastExitCode})`
+                                  ? ` (exit code ${lastExitCode})`
                                   : ""
                               }`
-                            : lastExitCode !== null
-                              ? ` (code ${lastExitCode})`
-                              : ""}
-                        </td>
-                        <td
-                          style={td}
-                          title={created?.toLocaleString?.() || ""}
-                        >
-                          {age}
-                        </td>
-                      </tr>
-                    );
-                  },
-                )}
+                            : ""
+                        }
+                      >
+                        {restartReason || (restarts > 0 ? "unknown" : "—")}
+                        {lastRestartText
+                          ? ` · ${lastRestartText} ago${
+                              lastExitCode !== null
+                                ? ` (code ${lastExitCode})`
+                                : ""
+                            }`
+                          : lastExitCode !== null
+                            ? ` (code ${lastExitCode})`
+                            : ""}
+                      </td>
+                      <td style={td} title={created?.toLocaleString?.() || ""}>
+                        {age}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -855,9 +913,7 @@ export default function K8() {
           </p>
         )}
         {deploymentsErr && <p style={{ color: "#b00" }}>{deploymentsErr}</p>}
-        {(showOnlyProblemDeployments
-          ? deployments.filter(isProblemDeployment).length
-          : deployments.length) === 0 && !deploymentsLoading ? (
+        {visibleDeployments.length === 0 && !deploymentsLoading ? (
           <p>No deployments found.</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -875,10 +931,7 @@ export default function K8() {
                 </tr>
               </thead>
               <tbody>
-                {(showOnlyProblemDeployments
-                  ? deployments.filter(isProblemDeployment)
-                  : deployments
-                ).map((d) => {
+                {visibleDeployments.map((d) => {
                   const ns = d?.namespace || "";
                   const name = d?.name || "";
                   const replicas =
@@ -958,6 +1011,32 @@ const card = {
   borderRadius: 12,
   padding: 16,
   background: "#fff",
+};
+
+const miniStatCard = {
+  border: "1px solid #eee",
+  borderRadius: 12,
+  padding: 14,
+  background: "#fff",
+  display: "grid",
+  gap: 4,
+};
+
+const miniStatLabel = {
+  fontSize: 12,
+  color: "#666",
+  textTransform: "uppercase",
+  letterSpacing: 0.4,
+};
+
+const miniStatValue = {
+  fontSize: 28,
+  lineHeight: 1.1,
+};
+
+const miniStatSubtext = {
+  fontSize: 12,
+  color: "#555",
 };
 
 const th = {

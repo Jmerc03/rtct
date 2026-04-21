@@ -157,6 +157,17 @@ router.get("/", async (req, res) => {
   }
 });
 
+// GET /alerts/sources
+router.get("/sources", async (_req, res) => {
+  try {
+    const sources = await repo.listSources();
+    res.json(sources);
+  } catch (err) {
+    console.error("[GET /alerts/sources] failed:", err);
+    res.status(500).json({ error: "failed_to_list_sources" });
+  }
+});
+
 // GET /alerts/:id
 router.get("/:id", async (req, res) => {
   const a = await repo.get(req.params.id);

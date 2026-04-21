@@ -4,6 +4,7 @@
  */
 import { apiFetch, __API_BASE__ as API_BASE } from "./http";
 import { token } from "./auth";
+export { apiFetch };
 
 /* ------------------------- Alerts ------------------------- */
 
@@ -51,6 +52,58 @@ export async function deleteAlert(id) {
   if (!res.ok && res.status !== 204) {
     throw new Error(`deleteAlert failed: ${res.status}`);
   }
+}
+
+export async function listAlertSources() {
+  const res = await apiFetch(`/alerts/sources`);
+  if (!res.ok) throw new Error(`listAlertSources failed: ${res.status}`);
+  return res.json();
+}
+
+/* ------------------------- Users ------------------------- */
+
+export async function listPendingUsers() {
+  const res = await apiFetch(`/users/pending`);
+  if (!res.ok) throw new Error(`listPendingUsers failed: ${res.status}`);
+  return res.json();
+}
+
+export async function listAllUsers() {
+  const res = await apiFetch(`/users`);
+  if (!res.ok) throw new Error(`listAllUsers failed: ${res.status}`);
+  return res.json();
+}
+
+export async function approveUser(id) {
+  const res = await apiFetch(`/users/${id}/approve`, {
+    method: "PATCH",
+  });
+  if (!res.ok) throw new Error(`approveUser failed: ${res.status}`);
+  return res.json();
+}
+
+export async function makeUserAdmin(id) {
+  const res = await apiFetch(`/users/${id}/make-admin`, {
+    method: "PATCH",
+  });
+  if (!res.ok) throw new Error(`makeUserAdmin failed: ${res.status}`);
+  return res.json();
+}
+
+export async function revokeUserApproval(id) {
+  const res = await apiFetch(`/users/${id}/revoke-approval`, {
+    method: "PATCH",
+  });
+  if (!res.ok) throw new Error(`revokeUserApproval failed: ${res.status}`);
+  return res.json();
+}
+
+export async function demoteUserToUser(id) {
+  const res = await apiFetch(`/users/${id}/demote`, {
+    method: "PATCH",
+  });
+  if (!res.ok) throw new Error(`demoteUserToUser failed: ${res.status}`);
+  return res.json();
 }
 
 /* ------------------------- Health ------------------------- */

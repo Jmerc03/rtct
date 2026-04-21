@@ -7,7 +7,7 @@
  */
 const API_BASE = String(import.meta.env?.VITE_API_URL ?? "/api").replace(
   /\/+$/,
-  ""
+  "",
 );
 
 const KEY_TOKEN = "token";
@@ -105,10 +105,18 @@ export async function signup({ email, username, password, photoUrl }) {
     body: JSON.stringify({ email, username, password, photoUrl }),
   });
 
-  if (!res.ok) throw new Error(`Signup failed: ${res.status}`);
-  const data = await res.json(); // { user, token }
-  saveSession(data);
-  return data.user;
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    throw new Error(data?.error || `Signup failed: ${res.status}`);
+  }
+
+  return data;
 }
 
 /** Log in via API */
@@ -118,8 +126,18 @@ export async function login({ email, password }) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  if (!res.ok) throw new Error(`Login failed: ${res.status}`);
-  const data = await res.json(); // { user, token }
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    throw new Error(data?.error || `Login failed: ${res.status}`);
+  }
+
   saveSession(data);
   return data.user;
 }
@@ -136,10 +154,20 @@ export async function me() {
   }
 
   const res = await authFetch("/auth/me", {}, { throwOn401: true });
-  if (!res.ok) throw new Error(`Session check failed: ${res.status}`);
-  const user = await res.json();
-  localStorage.setItem(KEY_USER, JSON.stringify(user));
-  return user;
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    throw new Error(data?.error || `Session check failed: ${res.status}`);
+  }
+
+  localStorage.setItem(KEY_USER, JSON.stringify(data));
+  return data;
 }
 
 /** Update local profile fields only (not persisted to API yet) */
@@ -156,7 +184,7 @@ function dispatchAuthEvent(type) {
   try {
     localStorage.setItem(
       AUTH_EVENT_KEY,
-      JSON.stringify({ type, ts: Date.now() })
+      JSON.stringify({ type, ts: Date.now() }),
     );
     // Immediately remove to keep storage clean and still trigger "storage" event
     localStorage.removeItem(AUTH_EVENT_KEY);

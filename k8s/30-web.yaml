@@ -16,6 +16,7 @@ spec:
       containers:
         - name: rtct-web
           image: rtct-web:local
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           readinessProbe:

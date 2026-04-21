@@ -17,30 +17,19 @@ spec:
       containers:
         - name: rtct-api
           image: rtct-api:local
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 4000
           envFrom:
             - configMapRef:
-                name: rtct-config # DATABASE_URL, CORS_ORIGIN
+                name: rtct-config
             - secretRef:
-                name: rtct-secrets # JWT_SECRET
+                name: rtct-secrets
           env:
             - name: NODE_ENV
               value: "production"
             - name: K8S_NS
               value: "rtct"
-            - name: INTERNAL_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: rtct-secrets
-                  key: INTERNAL_API_KEY
-            - name: INTERNAL_ALERT_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: rtct-secrets
-                  key: INTERNAL_ALERT_TOKEN
-
-            # Force these to come from the K8s Secret (and override envFrom if present)
             - name: INTERNAL_API_KEY
               valueFrom:
                 secretKeyRef:

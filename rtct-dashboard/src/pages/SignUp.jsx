@@ -9,6 +9,7 @@ export default function SignUp() {
   const [photoUrl, setPhotoUrl] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
 
   if (isAuthed()) return <Navigate to="/alerts" replace />;
 
@@ -16,9 +17,23 @@ export default function SignUp() {
     e.preventDefault();
     try {
       await signup({ email, username, password, photoUrl });
-      nav("/alerts");
+      setErr("");
+      setMsg(
+        "Account created. An admin must approve your account before you can log in.",
+      );
     } catch (e) {
-      setErr(e.message || "Sign up failed");
+      console.log(e);
+      const msg = e.message || "Sign up failed";
+      if (
+        msg.toLowerCase().includes("exists") ||
+        msg.toLowerCase().includes("duplicate") ||
+        msg.toLowerCase().includes("already registered")
+      ) {
+        setErr("An account with this email already exists.");
+      } else {
+        setErr(msg);
+      }
+      setMsg("");
     }
   };
 
@@ -27,6 +42,7 @@ export default function SignUp() {
       <form onSubmit={onSubmit} style={card}>
         <h2>Sign up</h2>
         {err && <p style={{ color: "#b00" }}>{err}</p>}
+        {msg && <p style={{ color: "#065f46" }}>{msg}</p>}
 
         <label>Username</label>
         <input

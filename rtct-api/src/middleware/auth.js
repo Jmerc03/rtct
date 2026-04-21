@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+const users = require("../repos/users-sql");
 
 /**
  * Factory that returns an Express auth middleware.
@@ -7,7 +8,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
  * matches that value after verifying the token.
  */
 function makeRequireAuth(requiredRole) {
-  return function requireAuth(req, res, next) {
+  return async function requireAuth(req, res, next) {
     // Hard guard: if something is really wrong with the req object,
     // fail fast instead of throwing during header access.
     if (!req || !res) {
@@ -44,13 +45,28 @@ function makeRequireAuth(requiredRole) {
     try {
       // { id, email, role, iat, exp }
       const payload = jwt.verify(token, JWT_SECRET);
+      const user = await users.findById(payload.id);
 
-      // If a role is required, enforce it
-      if (requiredRole && payload.role !== requiredRole) {
+      if (!user) {
+        return res.status(401).json({ error: "user not found" });
+      }
+
+      if (!user.is_approved) {
+        return res.status(403).json({ error: "approval required" });
+      }
+
+      if (requiredRole && user.role !== requiredRole) {
         return res.status(403).json({ error: "forbidden" });
       }
 
-      req.user = payload;
+      req.user = {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        photo_url: user.photo_url,
+        role: user.role,
+        is_approved: user.is_approved,
+      };
       return next();
     } catch (err) {
       console.warn("[auth] invalid token:", err && err.message);

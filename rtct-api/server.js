@@ -171,174 +171,170 @@ app.use("/auth", authLimiter, authRoutes);
 app.use("/health", health);
 
 // K8s: list pods in a single namespace (rtct by default)
-app.get(
-  ["/k8/pods", "/k8s/pods"],
-  requireAuth.withRole("operator"),
-  async (req, res) => {
-    try {
-      res.set("Cache-Control", "no-store");
-      // Namespace to query: use env if provided, otherwise default to the rtct namespace
-      // namespace query support:
-      //   ?namespace=rtct
-      //   ?namespace=default
-      //   ?namespace=rtct,default
-      //   ?namespace=all
-      const nsParamRaw = (req.query.namespace || req.query.ns || "")
-        .toString()
-        .trim();
+app.get(["/k8/pods", "/k8s/pods"], requireAuth, async (req, res) => {
+  try {
+    res.set("Cache-Control", "no-store");
+    // Namespace to query: use env if provided, otherwise default to the rtct namespace
+    // namespace query support:
+    //   ?namespace=rtct
+    //   ?namespace=default
+    //   ?namespace=rtct,default
+    //   ?namespace=all
+    const nsParamRaw = (req.query.namespace || req.query.ns || "")
+      .toString()
+      .trim();
 
-      const defaultNs = process.env.K8S_NS || "rtct";
+    const defaultNs = process.env.K8S_NS || "rtct";
 
-      let requested = [];
-      let mode = "namespaced"; // "namespaced" | "multi" | "all"
+    let requested = [];
+    let mode = "namespaced"; // "namespaced" | "multi" | "all"
 
-      if (!nsParamRaw) {
-        requested = [defaultNs];
-      } else if (nsParamRaw === "all" || nsParamRaw === "*") {
-        mode = "all";
-      } else {
-        requested = nsParamRaw
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        mode = requested.length > 1 ? "multi" : "namespaced";
-        if (requested.length === 0) requested = [defaultNs];
-      }
+    if (!nsParamRaw) {
+      requested = [defaultNs];
+    } else if (nsParamRaw === "all" || nsParamRaw === "*") {
+      mode = "all";
+    } else {
+      requested = nsParamRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      mode = requested.length > 1 ? "multi" : "namespaced";
+      if (requested.length === 0) requested = [defaultNs];
+    }
 
-      const api = getCoreApi();
+    const api = getCoreApi();
 
-      let items = [];
+    let items = [];
 
-      if (mode === "all") {
-        const resp = await api.listPodForAllNamespaces();
-        const body = resp?.body || resp || {};
-        items = body.items || [];
-      } else if (mode === "multi") {
-        const results = await Promise.all(
-          requested.map(async (ns) => {
-            const resp = await api.listNamespacedPod({ namespace: ns });
-            const body = resp?.body || resp || {};
-            return body.items || [];
-          }),
-        );
-        items = results.flat();
-      } else {
-        const ns = requested[0];
-        const resp = await api.listNamespacedPod({ namespace: ns });
-        const body = resp?.body || resp || {};
-        items = body.items || [];
-      }
+    if (mode === "all") {
+      const resp = await api.listPodForAllNamespaces();
+      const body = resp?.body || resp || {};
+      items = body.items || [];
+    } else if (mode === "multi") {
+      const results = await Promise.all(
+        requested.map(async (ns) => {
+          const resp = await api.listNamespacedPod({ namespace: ns });
+          const body = resp?.body || resp || {};
+          return body.items || [];
+        }),
+      );
+      items = results.flat();
+    } else {
+      const ns = requested[0];
+      const resp = await api.listNamespacedPod({ namespace: ns });
+      const body = resp?.body || resp || {};
+      items = body.items || [];
+    }
 
-      // From here on, use `items` instead of `(body.items || [])`
-      const pods = items.map((p) => {
-        const nsActual = p?.metadata?.namespace || requested[0] || defaultNs;
-        const containerSpecs = p?.spec?.containers || [];
-        const containerStatuses = p?.status?.containerStatuses || [];
-        const conditions = p?.status?.conditions || [];
+    // From here on, use `items` instead of `(body.items || [])`
+    const pods = items.map((p) => {
+      const nsActual = p?.metadata?.namespace || requested[0] || defaultNs;
+      const containerSpecs = p?.spec?.containers || [];
+      const containerStatuses = p?.status?.containerStatuses || [];
+      const conditions = p?.status?.conditions || [];
 
-        const readyCond = conditions.find((c) => c.type === "Ready");
-        const ready = readyCond?.status === "True";
+      const readyCond = conditions.find((c) => c.type === "Ready");
+      const ready = readyCond?.status === "True";
 
-        let restartReason = null;
-        let lastRestartAt = null;
-        let lastExitCode = null;
+      let restartReason = null;
+      let lastRestartAt = null;
+      let lastExitCode = null;
 
-        for (const cs of containerStatuses) {
-          const term = cs?.lastState?.terminated;
-          if (term) {
-            const finished = term.finishedAt ? new Date(term.finishedAt) : null;
-            if (!lastRestartAt || (finished && finished > lastRestartAt)) {
-              lastRestartAt = finished;
-              restartReason = term.reason || null;
-              lastExitCode =
-                typeof term.exitCode === "number" ? term.exitCode : null;
-            }
+      for (const cs of containerStatuses) {
+        const term = cs?.lastState?.terminated;
+        if (term) {
+          const finished = term.finishedAt ? new Date(term.finishedAt) : null;
+          if (!lastRestartAt || (finished && finished > lastRestartAt)) {
+            lastRestartAt = finished;
+            restartReason = term.reason || null;
+            lastExitCode =
+              typeof term.exitCode === "number" ? term.exitCode : null;
           }
         }
+      }
 
-        return {
-          uid: p?.metadata?.uid || null,
-          name: p?.metadata?.name || "",
-          namespace: nsActual,
-          phase: p?.status?.phase || "",
-          node: p?.spec?.nodeName || "",
-          hostIP: p?.status?.hostIP || "",
-          podIP: p?.status?.podIP || "",
-          startTime: p?.status?.startTime || null,
-          restarts: containerStatuses.reduce(
-            (n, c) => n + (c?.restartCount || 0),
-            0,
-          ),
-          containerCount: containerSpecs.length,
-          ready,
-          readyReason: readyCond?.reason || null,
-          restartReason,
-          lastRestartAt: lastRestartAt ? lastRestartAt.toISOString() : null,
-          lastExitCode,
-          containers: containerSpecs.map((c) => {
-            const resources = c?.resources || {};
-            const requests = resources.requests || {};
-            const limits = resources.limits || {};
-            return {
-              name: c?.name || "",
-              image: c?.image || "",
-              resources: {
-                requests: {
-                  cpu: requests.cpu || null,
-                  memory: requests.memory || null,
-                },
-                limits: {
-                  cpu: limits.cpu || null,
-                  memory: limits.memory || null,
-                },
+      return {
+        uid: p?.metadata?.uid || null,
+        name: p?.metadata?.name || "",
+        namespace: nsActual,
+        phase: p?.status?.phase || "",
+        node: p?.spec?.nodeName || "",
+        hostIP: p?.status?.hostIP || "",
+        podIP: p?.status?.podIP || "",
+        startTime: p?.status?.startTime || null,
+        restarts: containerStatuses.reduce(
+          (n, c) => n + (c?.restartCount || 0),
+          0,
+        ),
+        containerCount: containerSpecs.length,
+        ready,
+        readyReason: readyCond?.reason || null,
+        restartReason,
+        lastRestartAt: lastRestartAt ? lastRestartAt.toISOString() : null,
+        lastExitCode,
+        containers: containerSpecs.map((c) => {
+          const resources = c?.resources || {};
+          const requests = resources.requests || {};
+          const limits = resources.limits || {};
+          return {
+            name: c?.name || "",
+            image: c?.image || "",
+            resources: {
+              requests: {
+                cpu: requests.cpu || null,
+                memory: requests.memory || null,
               },
-            };
-          }),
-          conditions,
-        };
-      });
+              limits: {
+                cpu: limits.cpu || null,
+                memory: limits.memory || null,
+              },
+            },
+          };
+        }),
+        conditions,
+      };
+    });
 
-      const summary = pods.reduce(
-        (acc, p) => {
-          acc.totalPods += 1;
-          acc.totalRestarts += typeof p.restarts === "number" ? p.restarts : 0;
-          acc.totalContainers +=
-            typeof p.containerCount === "number" ? p.containerCount : 0;
-          if (p.ready) acc.readyPods += 1;
-          const phase = (p.phase || "").toLowerCase();
-          if (phase) {
-            acc.byPhase[phase] = (acc.byPhase[phase] || 0) + 1;
-          }
-          return acc;
-        },
-        {
-          totalPods: 0,
-          totalRestarts: 0,
-          totalContainers: 0,
-          readyPods: 0,
-          byPhase: {},
-        },
-      );
+    const summary = pods.reduce(
+      (acc, p) => {
+        acc.totalPods += 1;
+        acc.totalRestarts += typeof p.restarts === "number" ? p.restarts : 0;
+        acc.totalContainers +=
+          typeof p.containerCount === "number" ? p.containerCount : 0;
+        if (p.ready) acc.readyPods += 1;
+        const phase = (p.phase || "").toLowerCase();
+        if (phase) {
+          acc.byPhase[phase] = (acc.byPhase[phase] || 0) + 1;
+        }
+        return acc;
+      },
+      {
+        totalPods: 0,
+        totalRestarts: 0,
+        totalContainers: 0,
+        readyPods: 0,
+        byPhase: {},
+      },
+    );
 
-      res.json({
-        namespace:
-          mode === "all" ? "all" : mode === "multi" ? requested : requested[0],
-        requestedNamespaces: mode === "all" ? ["*"] : requested,
-        summary,
-        pods,
-        fetchedAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("[GET /k8/pods] error:", err?.response?.body || err);
-      res.status(500).json({ error: "failed_to_list_pods" });
-    }
-  },
-);
+    res.json({
+      namespace:
+        mode === "all" ? "all" : mode === "multi" ? requested : requested[0],
+      requestedNamespaces: mode === "all" ? ["*"] : requested,
+      summary,
+      pods,
+      fetchedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("[GET /k8/pods] error:", err?.response?.body || err);
+    res.status(500).json({ error: "failed_to_list_pods" });
+  }
+});
 
 // K8s: list deployments in the same namespace
 app.get(
   ["/k8/deployments", "/k8s/deployments"],
-  requireAuth.withRole("operator"),
+  requireAuth,
   async (req, res) => {
     try {
       res.set("Cache-Control", "no-store");
@@ -436,64 +432,60 @@ app.get(
 );
 
 // K8s: list cluster nodes (cluster-scope, requires RBAC for nodes)
-app.get(
-  ["/k8/nodes", "/k8s/nodes"],
-  requireAuth.withRole("operator"),
-  async (req, res) => {
-    try {
-      res.set("Cache-Control", "no-store");
-      const api = getCoreApi();
+app.get(["/k8/nodes", "/k8s/nodes"], requireAuth, async (req, res) => {
+  try {
+    res.set("Cache-Control", "no-store");
+    const api = getCoreApi();
 
-      const resp = await api.listNode();
-      const body = resp?.body || resp || {};
+    const resp = await api.listNode();
+    const body = resp?.body || resp || {};
 
-      const nodes = (body.items || []).map((n) => {
-        const status = n?.status || {};
-        const nodeInfo = status?.nodeInfo || {};
-        const conditions = status?.conditions || [];
-        const addresses = status?.addresses || [];
+    const nodes = (body.items || []).map((n) => {
+      const status = n?.status || {};
+      const nodeInfo = status?.nodeInfo || {};
+      const conditions = status?.conditions || [];
+      const addresses = status?.addresses || [];
 
-        const readyCond = conditions.find((c) => c.type === "Ready");
-        const ready = readyCond?.status === "True";
+      const readyCond = conditions.find((c) => c.type === "Ready");
+      const ready = readyCond?.status === "True";
 
-        const internalIPObj = addresses.find((a) => a.type === "InternalIP");
-        const hostnameObj = addresses.find((a) => a.type === "Hostname");
+      const internalIPObj = addresses.find((a) => a.type === "InternalIP");
+      const hostnameObj = addresses.find((a) => a.type === "Hostname");
 
-        return {
-          name: n?.metadata?.name || "",
-          labels: n?.metadata?.labels || {},
-          annotations: n?.metadata?.annotations || {},
-          creationTimestamp: n?.metadata?.creationTimestamp || null,
-          ready,
-          readyReason: readyCond?.reason || null,
-          readyMessage: readyCond?.message || null,
-          capacity: status?.capacity || {},
-          allocatable: status?.allocatable || {},
-          internalIP: internalIPObj?.address || null,
-          hostname: hostnameObj?.address || null,
-          kubeletVersion: nodeInfo?.kubeletVersion || null,
-          containerRuntimeVersion: nodeInfo?.containerRuntimeVersion || null,
-          osImage: nodeInfo?.osImage || null,
-          kernelVersion: nodeInfo?.kernelVersion || null,
-          conditions,
-        };
-      });
+      return {
+        name: n?.metadata?.name || "",
+        labels: n?.metadata?.labels || {},
+        annotations: n?.metadata?.annotations || {},
+        creationTimestamp: n?.metadata?.creationTimestamp || null,
+        ready,
+        readyReason: readyCond?.reason || null,
+        readyMessage: readyCond?.message || null,
+        capacity: status?.capacity || {},
+        allocatable: status?.allocatable || {},
+        internalIP: internalIPObj?.address || null,
+        hostname: hostnameObj?.address || null,
+        kubeletVersion: nodeInfo?.kubeletVersion || null,
+        containerRuntimeVersion: nodeInfo?.containerRuntimeVersion || null,
+        osImage: nodeInfo?.osImage || null,
+        kernelVersion: nodeInfo?.kernelVersion || null,
+        conditions,
+      };
+    });
 
-      res.json({
-        nodes,
-        fetchedAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("[GET /k8/nodes] error:", err?.response?.body || err);
-      res.status(500).json({ error: "failed_to_list_nodes" });
-    }
-  },
-);
+    res.json({
+      nodes,
+      fetchedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("[GET /k8/nodes] error:", err?.response?.body || err);
+    res.status(500).json({ error: "failed_to_list_nodes" });
+  }
+});
 
 // K8s: list namespaces with lightweight pod counts
 app.get(
   ["/k8/namespaces", "/k8s/namespaces"],
-  requireAuth.withRole("operator"),
+  requireAuth,
   async (req, res) => {
     try {
       res.set("Cache-Control", "no-store");

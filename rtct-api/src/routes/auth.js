@@ -8,9 +8,14 @@ const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 
 function genToken(user) {
   return jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      isApproved: !!user.is_approved,
+    },
     JWT_SECRET,
-    { expiresIn: "2h" }
+    { expiresIn: "2h" },
   );
 }
 
@@ -34,8 +39,10 @@ router.post("/signup", async (req, res) => {
       passwordHash: hash,
       photoUrl,
     });
-    const token = genToken(newUser);
-    res.status(201).json({ user: newUser, token });
+    res.status(201).json({
+      user: newUser,
+      message: "signup submitted; admin approval required before login",
+    });
   } catch (err) {
     console.error("signup failed:", err);
     res.status(500).json({ error: "signup failed" });
@@ -55,6 +62,10 @@ router.post("/login", async (req, res) => {
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) return res.status(400).json({ error: "invalid credentials" });
 
+    if (!user.is_approved) {
+      return res.status(403).json({ error: "approval required" });
+    }
+
     const token = genToken(user);
     res.json({
       user: {
@@ -63,6 +74,7 @@ router.post("/login", async (req, res) => {
         username: user.username,
         photo_url: user.photo_url,
         role: user.role,
+        is_approved: user.is_approved,
       },
       token,
     });

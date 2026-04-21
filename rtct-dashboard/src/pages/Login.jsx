@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { login, isAuthed } from "../auth";
+import { login, isAuthed, currentUser } from "../auth";
 import { Navigate, useNavigate, Link } from "react-router-dom";
 
 export default function Login() {
@@ -8,15 +8,29 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
 
-  if (isAuthed()) return <Navigate to="/alerts" replace />;
+  if (isAuthed()) {
+    const user = currentUser();
+    return (
+      <Navigate
+        to={user?.is_approved ? "/alerts" : "/awaiting-approval"}
+        replace
+      />
+    );
+  }
 
   const onSubmit = async (e) => {
     e.preventDefault();
     try {
-      await login({ email, password }); // ⬅ await the API call
+      await login({ email, password });
       nav("/alerts");
     } catch (e) {
-      setErr(e.message || "Login failed");
+      const msg = e.message || "Login failed";
+
+      if (msg.toLowerCase().includes("approval")) {
+        nav("/awaiting-approval");
+      } else {
+        setErr(msg);
+      }
     }
   };
 
@@ -25,6 +39,7 @@ export default function Login() {
       <form onSubmit={onSubmit} style={card}>
         <h2>Log in</h2>
         {err && <p style={{ color: "#b00" }}>{err}</p>}
+
         <label>Email</label>
         <input
           value={email}
@@ -32,6 +47,7 @@ export default function Login() {
           type="email"
           required
         />
+
         <label>Password</label>
         <input
           value={password}
@@ -39,7 +55,9 @@ export default function Login() {
           type="password"
           required
         />
+
         <button type="submit">Log in</button>
+
         <p>
           No account? <Link to="/signup">Sign up</Link>
         </p>

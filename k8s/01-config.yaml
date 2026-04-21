@@ -6,6 +6,11 @@ metadata:
 data:
   POSTGRES_DB: rtct
   POSTGRES_USER: postgres
-  POSTGRES_HOST: postgres
+  POSTGRES_HOST: db
   POSTGRES_PORT: "5432"
+  PGDATABASE: rtct
+  PGUSER: postgres
+  PGHOST: db
+  PGPORT: "5432"
+  DATABASE_URL: postgres://postgres:postgres@db:5432/rtct
   JWT_EXPIRES_IN: "1d"

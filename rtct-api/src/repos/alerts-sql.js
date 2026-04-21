@@ -51,6 +51,16 @@ module.exports = {
     return rows;
   },
 
+  async listSources() {
+    const { rows } = await pool.query(`
+      SELECT DISTINCT source
+      FROM alerts
+      WHERE source IS NOT NULL AND source <> ''
+      ORDER BY source ASC;
+    `);
+    return rows.map((r) => r.source);
+  },
+
   async get(id) {
     const { rows } = await pool.query(`SELECT * FROM alerts WHERE id = $1`, [
       id,

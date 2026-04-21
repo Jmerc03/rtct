@@ -13,8 +13,11 @@ export default function NavBar() {
       </Link>
 
       <nav style={tabs}>
-        <Tab to="/k8">K8</Tab>
-        <Tab to="/alerts">Alerts</Tab>
+        {user?.is_approved && <Tab to="/k8">K8</Tab>}
+        {user?.is_approved && <Tab to="/alerts">Alerts</Tab>}
+        {user?.is_approved && user?.role === "admin" && (
+          <Tab to="/admin/users">Admin</Tab>
+        )}
       </nav>
 
       <div style={right}>
@@ -28,7 +31,7 @@ export default function NavBar() {
               <Avatar
                 email={user?.email}
                 username={user?.username}
-                photoUrl={user?.photoUrl}
+                photoUrl={user?.photo_url}
               />
             </button>
           </>
@@ -135,9 +138,4 @@ const btnOutline = {
   background: "transparent",
   color: "#ffffffff",
   textDecoration: "none",
-};
-const profileLink = {
-  textDecoration: "none",
-  color: "#ffffffff",
-  fontWeight: 600,
 };

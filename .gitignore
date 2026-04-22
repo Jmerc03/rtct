@@ -2,3 +2,12 @@
 
 *.env
 ./node_modules
+
+./input.txt
+./ros2_flood.py
+./gcri
+
+./convert.py
+./convert.pub.js
+./output.csv
+./output_pub.csv

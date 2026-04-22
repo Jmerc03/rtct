@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sensor-det
+  namespace: rtct
+spec:
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  nodeSelector:
+    kubernetes.io/hostname: child4
+  containers:
+    - name: sensor-det
+      image: anderguizar/sensor_det:v5.5
+      imagePullPolicy: Always
+      env:
+        - name: ROS_DOMAIN_ID
+          value: "0"
+        - name: INTERNAL_ALERT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: rtct-secrets
+              key: INTERNAL_ALERT_TOKEN
+        - name: RTCT_INTERNAL_ALERT_URL
+          value: "http://api:4000/internal/alert"
+      stdin: true
+      tty: true

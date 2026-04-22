@@ -9,4 +9,5 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  # storageClassName: standard   # omit to use Minikube's default
+  storageClassName: rtct-local
+  volumeName: pgdata-pv

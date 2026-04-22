@@ -175,7 +175,6 @@ export default function K8() {
     loadNamespaces();
 
     const id = setInterval(() => {
-      loadPods();
       loadDeployments();
       loadNodes();
       loadNamespaces();
@@ -186,29 +185,13 @@ export default function K8() {
 
   useEffect(() => {
     loadPods();
+
+    const id = setInterval(() => {
+      loadPods();
+    }, 15000);
+
+    return () => clearInterval(id);
   }, [allPodNamespaces, selectedPodNamespaces]);
-
-  useEffect(() => {
-    const allNames = namespaces.map((ns) => ns?.name || "").filter(Boolean);
-    if (allNames.length === 0) return;
-
-    if (allPodNamespaces) {
-      const missing = allNames.some(
-        (name) => !selectedPodNamespaces.includes(name),
-      );
-      if (missing || selectedPodNamespaces.length !== allNames.length) {
-        setSelectedPodNamespaces(allNames);
-      }
-      return;
-    }
-
-    const everyChecked = allNames.every((name) =>
-      selectedPodNamespaces.includes(name),
-    );
-    if (everyChecked && !allPodNamespaces) {
-      setAllPodNamespaces(true);
-    }
-  }, [allPodNamespaces, namespaces, selectedPodNamespaces]);
 
   function handleToggleAllPodNamespaces(checked) {
     setAllPodNamespaces(checked);

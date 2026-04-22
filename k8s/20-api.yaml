@@ -14,18 +14,22 @@ spec:
         app: rtct-api
     spec:
       serviceAccountName: rtct-api
+      nodeSelector:
+        kubernetes.io/hostname: attack-pi
       containers:
         - name: rtct-api
-          image: rtct-api:local
+          image: jaxmerc536/rtct-api:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 4000
           envFrom:
             - configMapRef:
-                name: rtct-config
+                name: rtct-config # DATABASE_URL, CORS_ORIGIN
             - secretRef:
-                name: rtct-secrets
+                name: rtct-secrets # JWT_SECRET
           env:
+            - name: REPO
+              value: "sql"
             - name: NODE_ENV
               value: "production"
             - name: K8S_NS
@@ -60,3 +64,4 @@ spec:
   ports:
     - port: 4000
       targetPort: 4000
+  type: ClusterIP

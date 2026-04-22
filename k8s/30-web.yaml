@@ -13,9 +13,11 @@ spec:
       labels:
         app: rtct-web
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: attack-pi
       containers:
         - name: rtct-web
-          image: rtct-web:local
+          image: jaxmerc536/rtct-dashboard:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

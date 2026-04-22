@@ -24,6 +24,8 @@ spec:
     metadata:
       labels: { app: postgres }
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: attack-pi
       securityContext:
         fsGroup: 999 # postgres user group
         fsGroupChangePolicy: "OnRootMismatch"

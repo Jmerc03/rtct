@@ -168,7 +168,15 @@ export default function AdminUsers() {
   }, []);
 
   return (
-    <div style={{ display: "grid", gap: 20 }}>
+    <div
+      style={{
+        display: "grid",
+        gap: 20,
+        padding: 16,
+        width: "100%",
+        boxSizing: "border-box",
+      }}
+    >
       <div
         style={{
           display: "flex",
@@ -264,6 +272,8 @@ const card = {
   justifyContent: "space-between",
   alignItems: "center",
   gap: 12,
+  flexWrap: "wrap",
+  boxSizing: "border-box",
 };
 
 const emptyCard = {
@@ -271,4 +281,5 @@ const emptyCard = {
   borderRadius: 12,
   padding: 16,
   background: "#fff",
+  boxSizing: "border-box",
 };

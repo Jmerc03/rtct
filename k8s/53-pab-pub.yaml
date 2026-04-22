@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pab-pub
+  namespace: rtct
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pab-pub
+  template:
+    metadata:
+      labels:
+        app: pab-pub
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        kubernetes.io/hostname: u1-desktop
+      containers:
+        - name: pab-pub
+          image: anderguizar/pp:v1
+          imagePullPolicy: Always
+          env:
+            - name: ROS_DOMAIN_ID
+              value: "0"
+            - name: RMW_IMPLEMENTATION
+              value: "rmw_cyclonedds_cpp"
+            - name: ROS_LOCALHOST_ONLY
+              value: "0"

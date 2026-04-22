@@ -17,15 +17,15 @@ spec:
         kubernetes.io/hostname: giga-pi
       containers:
         - name: alert-generator
-          image: alert-generator:local
+          image: jaxmerc536/rtct-alertgen:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: API_URL
-              value: "http://api.rtct.svc.cluster.local:4000/internal/alert"
+              value: "http://api:4000/internal/alert"
             - name: INTERNAL_ALERT_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: rtct-secrets
                   key: INTERNAL_ALERT_TOKEN
             - name: INTERVAL
-              value: "10000" # 10 seconds
+              value: "10000"

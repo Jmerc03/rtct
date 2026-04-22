@@ -5,7 +5,6 @@
 
 ./input.txt
 ./ros2_flood.py
-./gcri
 
 ./convert.py
 ./convert.pub.js

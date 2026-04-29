@@ -1,8 +1,8 @@
 # Real-Time Cyber Threat Management
 
-## Attack Visualization System
+## Attack Visualization Subsystem
 
-Attack ingestion, storage, streaming, and visualization subsystem for the RTCT2 capstone project.
+Real-time alert ingestion, storage, streaming, and visualization subsystem for a Kubernetes-based cyber threat monitoring platform.
 
 ---
 
@@ -31,7 +31,7 @@ It provides both **real-time situational awareness** and **historical context** 
 
 At a conceptual level, the system follows this flow:
 
-Alert Producers → Threat API → Database → Operator Dashboard
+Alert Producers → Alert API → PostgreSQL → Dashboard (SSE + REST)
 
 - Alerts are ingested through a detector-agnostic API
 - Alerts are persisted for historical review
@@ -45,8 +45,8 @@ Alert Producers → Threat API → Database → Operator Dashboard
 
 k8s/ Kubernetes manifests and deployment configuration  
 alert-generation/ Simulated alert and traffic generators for testing  
-api/ Threat API and alert persistence layer  
-dashboard/ Operator-facing visualization dashboard
+api/ Node.js/Express alert API and data layer  
+dashboard/ React-based operator dashboard
 
 Each directory represents a distinct microservice or deployment concern within the overall system.
 
@@ -78,10 +78,89 @@ This design allows the system to operate with **simulated alerts during developm
 ## Technologies Used
 
 - Backend: Node.js, Express
-- Frontend: React
+- Frontend: React (SPA)
 - Database: PostgreSQL
 - Infrastructure: Docker, Kubernetes
-- Networking: Server-Sent Events (SSE)
+- Streaming: Server-Sent Events (SSE)
+
+---
+
+## Running the System
+
+The subsystem is designed to run within a Kubernetes cluster. Below are the basic steps to deploy and run the system.
+
+### Prerequisites
+
+- Kubernetes cluster (k3s, minikube, or cloud cluster)
+- `kubectl` configured
+- Docker (for building images if needed)
+
+### 1. Deploy Core Services
+
+From the repository root:
+
+```bash
+cd k8s
+kubectl apply -f .
+```
+
+This will deploy:
+
+- PostgreSQL database
+- Alert API service
+- Dashboard frontend
+
+### 2. Verify Deployment
+
+```bash
+kubectl get pods -n rtct
+```
+
+Wait until all pods are in the `Running` state.
+
+### 3. Access the Dashboard
+
+Port-forward the web service:
+
+```bash
+kubectl port-forward -n rtct svc/web 8080:8080
+```
+
+Then open:
+
+```
+http://localhost:8080
+```
+
+### 4. Access the API
+
+```bash
+kubectl port-forward -n rtct svc/api 4000:4000
+```
+
+Example test request:
+
+```bash
+curl -X POST http://localhost:4000/internal/alert \
+  -H "Content-Type: application/json" \
+  -H "x-internal-token: YOUR_TOKEN" \
+  -d '{
+    "source": "demo",
+    "type": "test",
+    "severity": "high",
+    "confidence": 90,
+    "message": "Test alert"
+  }'
+```
+
+### 5. (Optional) Run Alert Generators
+
+```bash
+cd alert-generation
+python3 replay_attack.py
+```
+
+This will simulate alerts flowing through the system.
 
 ---
 
